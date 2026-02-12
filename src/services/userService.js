@@ -15,6 +15,13 @@ class UserService {
         return user;
     }
 
+    findByName(name) {
+        if (!name || typeof name !== 'string' || name.trim().length === 0) {
+            throw { status: 400, message: 'Name query parameter is required' };
+        }
+        return userRepository.findByName(name.trim());
+    }
+
     create(data) {
         this._validateEmail(data.email);
         this._validatePassword(data.password);

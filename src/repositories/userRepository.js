@@ -16,6 +16,11 @@ class UserRepository {
         return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     }
 
+    findByName(name) {
+        const db = getDatabase();
+        return db.prepare('SELECT id, name, email, age, role, created_at, updated_at FROM users WHERE name LIKE ?').all(`%${name}%`);
+    }
+
     findByEmail(email) {
         const db = getDatabase();
         return db.prepare('SELECT * FROM users WHERE email = ?').get(email);

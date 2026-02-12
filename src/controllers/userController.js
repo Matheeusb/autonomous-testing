@@ -3,7 +3,6 @@ const userService = require('../services/userService');
 class UserController {
     getAll(req, res, next) {
         try {
-            // USER role can only see their own data
             if (req.user.role === 'USER') {
                 const user = userService.findById(req.user.id);
                 return res.status(200).json([user]);
@@ -27,6 +26,16 @@ class UserController {
 
             const user = userService.findById(id);
             return res.status(200).json(user);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    getByName(req, res, next) {
+        try {
+            const { name } = req.query;
+            const users = userService.findByName(name);
+            return res.status(200).json(users);
         } catch (error) {
             next(error);
         }

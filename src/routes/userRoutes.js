@@ -111,6 +111,37 @@ router.get('/', userController.getAll);
 
 /**
  * @swagger
+ * /users/search:
+ *   get:
+ *     tags: [Users]
+ *     summary: Search users by name
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Name or partial name to search for
+ *     responses:
+ *       200:
+ *         description: List of matching users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Name query parameter is required
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/search', userController.getByName);
+
+/**
+ * @swagger
  * /users/{id}:
  *   get:
  *     tags: [Users]
