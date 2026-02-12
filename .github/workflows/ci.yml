@@ -1,0 +1,144 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+  unit-test:
+    name: Unit Test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        id: unit_tests
+        continue-on-error: true
+        run: |
+          npm run test:ci 2>&1 | tee test-output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 30
+
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test-output.txt
+          retention-days: 30
+
+      - name: Create issue for Copilot analysis on failure
+        if: steps.unit_tests.outputs.exit_code != '0'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+
+            const testOutput = fs.readFileSync('test-output.txt', 'utf8');
+            const instructions = fs.readFileSync('quality-rules/unit-test.instructions.md', 'utf8');
+            const analysisInstructions = fs.readFileSync('.github/copilot-analysis-instructions.md', 'utf8');
+
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const sha = context.sha.substring(0, 7);
+
+            const issueBody = `## 🚨 Unit Test Failure – Automated Analysis Request
+
+            ### Pipeline Information
+            - **Commit:** \`${sha}\`
+            - **Branch:** \`${context.ref}\`
+            - **Run:** [View workflow run](${runUrl})
+
+            ---
+
+            ### 📋 Analysis Instructions
+            <details>
+            <summary>Click to expand analysis instructions</summary>
+
+            ${analysisInstructions}
+
+            </details>
+
+            ---
+
+            ### 📊 Test Output
+            <details>
+            <summary>Click to expand full test output</summary>
+
+            \`\`\`
+            ${testOutput.length > 60000 ? testOutput.substring(testOutput.length - 60000) : testOutput}
+            \`\`\`
+
+            </details>
+
+            ---
+
+            ### 📚 Quality Rules Reference
+            <details>
+            <summary>Click to expand unit test quality rules</summary>
+
+            ${instructions}
+
+            </details>
+
+            ---
+
+            > ⚡ This issue was automatically created by the CI pipeline.
+            > Copilot should analyze the test failures, identify the root cause in the source code, and open a PR with the fix.
+            `;
+
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🤖 [Copilot Fix] Unit test failures on ${context.ref} (${sha})`,
+              body: issueBody,
+              labels: ['copilot-fix', 'unit-test', 'automated'],
+              assignees: ['copilot']
+            });
+
+            core.notice(`Issue created: ${issue.data.html_url}`);
+
+      - name: Fail workflow if tests failed
+        if: steps.unit_tests.outputs.exit_code != '0'
+        run: exit 1
