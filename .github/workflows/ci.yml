@@ -2,7 +2,7 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [main, develop]
+    branches: ['*']
   pull_request:
     branches: [main]
 
@@ -145,11 +145,7 @@ jobs:
         if: always()
         id: missing_tests_check
         run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'src/services' 'src/controllers' 'src/middlewares' 'src/repositories')
-          else
-            CHANGED_FILES=$(git diff --name-only HEAD~1 -- 'src/services' 'src/controllers' 'src/middlewares' 'src/repositories' 2>/dev/null || echo "")
-          fi
+          CHANGED_FILES=$(git diff --name-only HEAD~1 -- 'src/services' 'src/controllers' 'src/middlewares' 'src/repositories' 2>/dev/null || echo "")
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "No source files changed in testable directories"
