@@ -18,8 +18,6 @@ class UserController {
     getById(req, res, next) {
         try {
             const { id } = req.params;
-
-            // USER role can only see their own data
             if (req.user.role === 'USER' && req.user.id !== id) {
                 return res.status(403).json({ message: 'Insufficient permissions' });
             }
@@ -36,6 +34,16 @@ class UserController {
             const { name } = req.query;
             const users = userService.findByName(name);
             return res.status(200).json(users);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    getByEmail(req, res, next) {
+        try {
+            const { email } = req.query;
+            const user = userService.findByEmail(email);
+            return res.status(200).json(user);
         } catch (error) {
             next(error);
         }

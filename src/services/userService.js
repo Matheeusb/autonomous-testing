@@ -22,6 +22,25 @@ class UserService {
         return userRepository.findByName(name.trim());
     }
 
+    findByEmail(email) {
+        if (!email || typeof email !== 'string' || email.trim().length === 0) {
+            throw { status: 400, message: 'Email query parameter is required' };
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            throw { status: 400, message: 'Invalid email format' };
+        }
+
+        const user = userRepository.findByEmail(email.trim());
+        if (!user) {
+            throw { status: 404, message: 'User not found' };
+        }
+
+        const { password, ...userWithoutPassword } = user;
+        return userWithoutPassword;
+    }
+
     create(data) {
         this._validateEmail(data.email);
         this._validatePassword(data.password);

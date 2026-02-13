@@ -142,6 +142,38 @@ router.get('/search', userController.getByName);
 
 /**
  * @swagger
+ * /users/search-by-email:
+ *   get:
+ *     tags: [Users]
+ *     summary: Search user by email
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: email
+ *         description: Email address to search for
+ *     responses:
+ *       200:
+ *         description: User found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Email query parameter is required or invalid format
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ */
+router.get('/search-by-email', userController.getByEmail);
+
+/**
+ * @swagger
  * /users/{id}:
  *   get:
  *     tags: [Users]
