@@ -10,6 +10,7 @@ class AuthController {
             }
 
             const result = authService.login(email, password);
+            console.log('Just a test');
             return res.status(200).json(result);
         } catch (error) {
             next(error);
