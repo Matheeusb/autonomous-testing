@@ -72,94 +72,96 @@ jobs:
 
       - name: Create issue for Copilot analysis on failure
         if: steps.unit_tests.outputs.exit_code != '0'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const fs = require('fs');
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
-            const testOutput = fs.readFileSync('test-output.txt', 'utf8');
-            const instructions = fs.readFileSync('quality-rules/unit-test.instructions.md', 'utf8');
-            const analysisInstructions = fs.readFileSync('.github/copilot-analysis-instructions.md', 'utf8');
+          TEST_OUTPUT=$(cat test-output.txt)
+          if [ ${#TEST_OUTPUT} -gt 60000 ]; then
+            TEST_OUTPUT=$(echo "$TEST_OUTPUT" | tail -c 60000)
+          fi
 
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const sha = context.sha.substring(0, 7);
+          INSTRUCTIONS=$(cat quality-rules/unit-test.instructions.md)
+          ANALYSIS_INSTRUCTIONS=$(cat .github/copilot-analysis-instructions.md)
 
-            const issueBody = `## 🚨 Unit Test Failure – Automated Analysis Request
+          ISSUE_BODY=$(cat <<EOF
+          ## 🚨 Unit Test Failure – Automated Analysis Request
 
-            ### Pipeline Information
-            - **Commit:** \`${sha}\`
-            - **Branch:** \`${context.ref}\`
-            - **Run:** [View workflow run](${runUrl})
+          ### Pipeline Information
+          - **Commit:** \`${SHA}\`
+          - **Branch:** \`${GITHUB_REF}\`
+          - **Run:** [View workflow run](${RUN_URL})
 
-            ---
+          ---
 
-            ### 📋 Analysis Instructions
-            <details>
-            <summary>Click to expand analysis instructions</summary>
+          ### 📋 Analysis Instructions
+          <details>
+          <summary>Click to expand analysis instructions</summary>
 
-            ${analysisInstructions}
+          ${ANALYSIS_INSTRUCTIONS}
 
-            </details>
+          </details>
 
-            ---
+          ---
 
-            ### 📊 Test Output
-            <details>
-            <summary>Click to expand full test output</summary>
+          ### 📊 Test Output
+          <details>
+          <summary>Click to expand full test output</summary>
 
-            \`\`\`
-            ${testOutput.length > 60000 ? testOutput.substring(testOutput.length - 60000) : testOutput}
-            \`\`\`
+          \`\`\`
+          ${TEST_OUTPUT}
+          \`\`\`
 
-            </details>
+          </details>
 
-            ---
+          ---
 
-            ### 📚 Quality Rules Reference
-            <details>
-            <summary>Click to expand unit test quality rules</summary>
+          ### 📚 Quality Rules Reference
+          <details>
+          <summary>Click to expand unit test quality rules</summary>
 
-            ${instructions}
+          ${INSTRUCTIONS}
 
-            </details>
+          </details>
 
-            ---
+          ---
 
-            > ⚡ This issue was automatically created by the CI pipeline.
-            > Copilot should analyze the test failures, identify the root cause in the source code, and open a PR with the fix.
-            `;
+          > ⚡ This issue was automatically created by the CI pipeline.
+          > Copilot should analyze the test failures, identify the root cause in the source code, and open a PR with the fix.
+          EOF
+          )
 
-            const issue = await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `🤖 [Copilot Fix] Unit test failures on ${context.ref} (${sha})`,
-              body: issueBody,
-              labels: ['copilot-fix', 'unit-test', 'automated'],
-              assignees: ['copilot']
-            });
+          ISSUE_URL=$(gh issue create \
+            --title "🤖 [Copilot Fix] Unit test failures on ${GITHUB_REF} (${SHA})" \
+            --body "$ISSUE_BODY" \
+            --label "copilot-fix" \
+            --label "unit-test" \
+            --label "automated" \
+            --assignee "copilot")
 
-            core.notice(`Issue created: ${issue.data.html_url}`);
+          echo "::notice::Issue created: $ISSUE_URL"
 
-      - name: Detect missing tests for changed source files
+      - name: Detect missing tests for source files
         if: always()
         id: missing_tests_check
         run: |
-          CHANGED_FILES=$(git diff --name-only HEAD~1 -- 'src/services' 'src/controllers' 'src/middlewares' 'src/repositories' 2>/dev/null || echo "")
+          SOURCE_FILES=$(find src/services src/controllers src/middlewares src/repositories -name '*.js' 2>/dev/null || echo "")
 
-          if [ -z "$CHANGED_FILES" ]; then
-            echo "No source files changed in testable directories"
+          if [ -z "$SOURCE_FILES" ]; then
+            echo "No source files found in testable directories"
             echo "has_gaps=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Changed source files:"
-          echo "$CHANGED_FILES"
+          echo "Source files found:"
+          echo "$SOURCE_FILES"
 
           MISSING_TESTS=""
           LOW_COVERAGE=""
 
-          for file in $CHANGED_FILES; do
+          for file in $SOURCE_FILES; do
             relative_path="${file#src/}"
             test_file="tests/unit/${relative_path%.js}.test.js"
 
@@ -188,7 +190,7 @@ jobs:
 
           echo -e "$MISSING_TESTS" > missing-tests-report.txt
           echo -e "$LOW_COVERAGE" > low-coverage-report.txt
-          echo "$CHANGED_FILES" > changed-files.txt
+          echo "$SOURCE_FILES" > source-files.txt
 
           if [ -n "$MISSING_TESTS" ] || [ -n "$LOW_COVERAGE" ]; then
             echo "has_gaps=true" >> "$GITHUB_OUTPUT"
@@ -198,84 +200,90 @@ jobs:
 
       - name: Create issue for missing tests
         if: always() && steps.missing_tests_check.outputs.has_gaps == 'true'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const fs = require('fs');
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
-            const missingTests = fs.readFileSync('missing-tests-report.txt', 'utf8').trim();
-            const lowCoverage = fs.readFileSync('low-coverage-report.txt', 'utf8').trim();
-            const changedFiles = fs.readFileSync('changed-files.txt', 'utf8').trim();
-            const instructions = fs.readFileSync('quality-rules/unit-test.instructions.md', 'utf8');
-            const analysisInstructions = fs.readFileSync('.github/copilot-missing-tests-instructions.md', 'utf8');
+          MISSING_TESTS=$(cat missing-tests-report.txt | sed '/^$/d')
+          LOW_COVERAGE=$(cat low-coverage-report.txt | sed '/^$/d')
+          SOURCE_FILES=$(cat source-files.txt)
+          INSTRUCTIONS=$(cat quality-rules/unit-test.instructions.md)
+          ANALYSIS_INSTRUCTIONS=$(cat .github/copilot-missing-tests-instructions.md)
 
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const sha = context.sha.substring(0, 7);
+          GAPS_SECTION=""
+          if [ -n "$MISSING_TESTS" ]; then
+            GAPS_SECTION="${GAPS_SECTION}### 🚫 Arquivos sem teste unitário correspondente
 
-            let gapsSection = '';
-            if (missingTests) {
-              gapsSection += `### 🚫 Arquivos sem teste unitário correspondente\n\n${missingTests}\n\n`;
-            }
-            if (lowCoverage) {
-              gapsSection += `### ⚠️ Arquivos com cobertura abaixo do threshold (80%)\n\n${lowCoverage}\n\n`;
-            }
+          ${MISSING_TESTS}
 
-            const changedFilesList = changedFiles.split('\n').map(f => `- \`${f}\``).join('\n');
+          "
+          fi
+          if [ -n "$LOW_COVERAGE" ]; then
+            GAPS_SECTION="${GAPS_SECTION}### ⚠️ Arquivos com cobertura abaixo do threshold (80%)
 
-            const issueBody = `## 🧪 Missing Tests – New Feature Without Test Coverage
+          ${LOW_COVERAGE}
 
-            ### Pipeline Information
-            - **Commit:** \`${sha}\`
-            - **Branch:** \`${context.ref}\`
-            - **Run:** [View workflow run](${runUrl})
+          "
+          fi
 
-            ---
+          SOURCE_FILES_LIST=$(echo "$SOURCE_FILES" | sed 's/^/- \`/' | sed 's/$/\`/')
 
-            ### 📂 Changed Source Files
-            ${changedFilesList}
+          ISSUE_BODY=$(cat <<EOF
+          ## 🧪 Missing Tests – Test Coverage Gaps
 
-            ---
+          ### Pipeline Information
+          - **Commit:** \`${SHA}\`
+          - **Branch:** \`${GITHUB_REF}\`
+          - **Run:** [View workflow run](${RUN_URL})
 
-            ### 🔍 Test Coverage Gaps
-            ${gapsSection}
+          ---
 
-            ---
+          ### 📂 Source Files Analyzed
+          ${SOURCE_FILES_LIST}
 
-            ### 📋 Analysis Instructions
-            <details>
-            <summary>Click to expand analysis instructions</summary>
+          ---
 
-            ${analysisInstructions}
+          ### 🔍 Test Coverage Gaps
+          ${GAPS_SECTION}
 
-            </details>
+          ---
 
-            ---
+          ### 📋 Analysis Instructions
+          <details>
+          <summary>Click to expand analysis instructions</summary>
 
-            ### 📚 Quality Rules Reference
-            <details>
-            <summary>Click to expand unit test quality rules</summary>
+          ${ANALYSIS_INSTRUCTIONS}
 
-            ${instructions}
+          </details>
 
-            </details>
+          ---
 
-            ---
+          ### 📚 Quality Rules Reference
+          <details>
+          <summary>Click to expand unit test quality rules</summary>
 
-            > ⚡ This issue was automatically created by the CI pipeline.
-            > Copilot should analyze the source code, create the missing unit tests, and open a PR.
-            `;
+          ${INSTRUCTIONS}
 
-            const issue = await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `🤖 [Copilot Tests] Missing tests for new code on ${context.ref} (${sha})`,
-              body: issueBody,
-              labels: ['copilot-fix', 'missing-tests', 'automated'],
-              assignees: ['copilot']
-            });
+          </details>
 
-            core.notice(`Issue created for missing tests: ${issue.data.html_url}`);
+          ---
+
+          > ⚡ This issue was automatically created by the CI pipeline.
+          > Copilot should analyze the source code, create the missing unit tests, and open a PR.
+          EOF
+          )
+
+          ISSUE_URL=$(gh issue create \
+            --title "🤖 [Copilot Tests] Test coverage gaps on ${GITHUB_REF} (${SHA})" \
+            --body "$ISSUE_BODY" \
+            --label "copilot-fix" \
+            --label "missing-tests" \
+            --label "automated" \
+            --assignee "copilot")
+
+          echo "::notice::Issue created for missing tests: $ISSUE_URL"
 
       - name: Fail workflow if tests failed
         if: steps.unit_tests.outputs.exit_code != '0'
